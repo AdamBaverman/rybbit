@@ -1,3 +1,4 @@
+import { visibleGoals, evaluateCrossSiteGoal } from "./crossSiteGoal.js";
 import { FilterParams } from "@rybbit/shared";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { and, inArray, eq } from "drizzle-orm";
@@ -146,19 +147,25 @@ export const getGoalTimeSeries = analyticsRoute<GetGoalTimeSeriesRequest>(
       return res.send({ data: [] });
     }
 
-    const query = buildGoalTimeSeriesQuery(req.query, siteId, siteGoals);
-    if (query === null) {
-      return res.send({ data: [] });
-    }
-
-    const data = await runAnalyticsQuery<GoalTimeSeriesPoint>({
-      query,
-      params: {
-        siteId,
-        timeZone,
-      },
+    const visible = await visibleGoals(req, siteId, siteGoals);
+    const query = buildGoalTimeSeriesQuery(
+      req.query,
+      siteId,
+      visible.filter(goal => !goal.config.crossSite)
+    );
+    const [local, crossSite] = await Promise.all([
+      query ? runAnalyticsQuery<GoalTimeSeriesPoint>({ query, params: { siteId, timeZone } }) : [],
+      Promise.all(
+        visible
+          .filter(goal => goal.config.crossSite)
+          .map(async goal => {
+            const result = await evaluateCrossSiteGoal(req.query, goal, true);
+            return result.series.map(point => ({ ...point, goal_id: goal.goalId }));
+          })
+      ),
+    ]);
+    return res.send({
+      data: [...local, ...crossSite.flat()].sort((a, b) => a.time.localeCompare(b.time) || a.goal_id - b.goal_id),
     });
-
-    return res.send({ data });
   }
 );

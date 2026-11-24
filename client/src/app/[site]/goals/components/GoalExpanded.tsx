@@ -221,7 +221,7 @@ export function GoalExpanded({ row, siteId, timeSeries, isLoadingTimeSeries, cha
 
   const { data: previousSeries } = useGetGoalTimeSeries({ goalIds: [goal.goalId], periodTime: "previous" });
 
-  const pivotFilters = goalPivotFilters(goal);
+  const pivotFilters = row.goal.config.crossSite ? undefined : goalPivotFilters(goal);
   // usePivotHref only builds Sessions, Users and Replay links. The funnels and
   // events pages read the same query string, so their links are the Sessions
   // link with the last path segment swapped.
@@ -292,11 +292,13 @@ export function GoalExpanded({ row, siteId, timeSeries, isLoadingTimeSeries, cha
           )}
         </div>
 
-        <ConvertedSessions
-          row={row}
-          siteId={siteId}
-          sessionsHref={pivotFilters ? pivotHref("sessions", pivotFilters) : undefined}
-        />
+        {!row.goal.config.crossSite && (
+          <ConvertedSessions
+            row={row}
+            siteId={siteId}
+            sessionsHref={pivotFilters ? pivotHref("sessions", pivotFilters) : undefined}
+          />
+        )}
       </div>
     </div>
   );

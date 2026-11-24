@@ -1,3 +1,4 @@
+import { canAccessCrossSiteScope } from "../utils/crossSite.js";
 import { eq } from "drizzle-orm";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../db/postgres/postgres.js";
@@ -22,21 +23,25 @@ export async function getFunnels(
       .orderBy(funnelsTable.createdAt);
 
     // Transform the records to a more frontend-friendly structure
-    const funnels = funnelRecords.map(record => {
-      const data = record.data as any;
-      return {
-        id: record.reportId,
-        name: data.name || "Unnamed Funnel",
-        steps: data.steps || [],
-        configuration: data.configuration || {},
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-        // Sessions and conversion are computed per period by getFunnelSummaries;
-        // nothing is stored with the definition.
-      };
-    });
+    const funnels = await Promise.all(
+      funnelRecords.map(async record => {
+        const data = record.data as any;
+        if (data.siteIds && !(await canAccessCrossSiteScope(request, Number(siteId), data.siteIds))) return null;
+        return {
+          id: record.reportId,
+          name: data.name || "Unnamed Funnel",
+          steps: data.steps || [],
+          ...(data.siteIds ? { siteIds: data.siteIds } : {}),
+          configuration: data.configuration || {},
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+          // Sessions and conversion are computed per period by getFunnelSummaries;
+          // nothing is stored with the definition.
+        };
+      })
+    );
 
-    return reply.send({ data: funnels });
+    return reply.send({ data: funnels.filter(funnel => funnel !== null) });
   } catch (error) {
     request.log.error({ err: error }, "Error fetching funnels");
     return reply.status(500).send({ error: "Failed to fetch funnels" });

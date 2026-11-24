@@ -91,7 +91,9 @@ export function metricsFromSummary(
 
 /** The analyze endpoint's rows as metrics. It reports no step times. */
 export function metricsFromAnalysis(rows: FunnelResponse[]): FunnelMetrics {
-  return computeFunnelMetrics(rows.map(row => ({ sessions: row.sessions })));
+  return computeFunnelMetrics(
+    rows.map(row => ({ sessions: row.sessions, medianSecondsToNext: row.median_seconds_to_next }))
+  );
 }
 
 /** One row of the funnels list: the definition and its numbers for both periods. */

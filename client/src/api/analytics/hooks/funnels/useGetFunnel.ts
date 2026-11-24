@@ -16,11 +16,11 @@ export function useGetFunnel(config?: FunnelRequest, debounce?: boolean) {
   const filteredFilters = getFilteredFilters(FUNNEL_PAGE_FILTERS);
 
   return useAnalyticsQuery<FunnelResponse[]>({
-    key: "funnel",
+    key: configToUse?.siteIds ? ["funnel", "sites", ...configToUse.siteIds] : "funnel",
     path: "funnels/analyze",
     useFilters: filteredFilters.length > 0,
     customFilters: filteredFilters,
-    body: () => ({ steps: configToUse?.steps ?? [], name: configToUse?.name }),
+    body: () => ({ steps: configToUse?.steps ?? [], name: configToUse?.name, siteIds: configToUse?.siteIds }),
     enabled: !!configToUse,
   });
 }
@@ -38,6 +38,7 @@ export function useSaveFunnel() {
         const saveResponse = await saveFunnel(site, {
           steps: funnelConfig.steps,
           name: funnelConfig.name,
+          siteIds: funnelConfig.siteIds,
           reportId: funnelConfig.reportId,
         });
 

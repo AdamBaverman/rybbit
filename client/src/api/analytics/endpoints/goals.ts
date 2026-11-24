@@ -6,6 +6,13 @@ import { BucketedParams, CommonApiParams, PaginationParams, SortParams } from ".
 export type GoalType = "path" | "event" | AutocaptureTargetType;
 
 export interface GoalConfig {
+  crossSite?: {
+    siteIds: number[];
+    entrySiteId?: number;
+    entryPath: string;
+    utmSource?: string;
+    conversionSiteId?: number;
+  };
   pathPattern?: string;
   eventName?: string;
   // Optional wildcard pattern for autocapture goals (URL, button text, form name/id, copied text)

@@ -61,16 +61,26 @@ export function GoalMatchPreview({ definition }: { definition: GoalDefinition | 
       <GoalTrendBars
         data={data.series}
         isLoading={false}
-        label={t("Sessions that would have converted, over the selected period")}
+        label={
+          definition.config.crossSite
+            ? t("Users who would have converted, by entry time")
+            : t("Sessions that would have converted, over the selected period")
+        }
         className="h-[22px] w-[120px] shrink-0"
       />
       <p className="min-w-0 text-neutral-700 dark:text-neutral-200">
-        {data.conversions === 0
-          ? t("No sessions would have converted in the selected period.")
-          : t(
-              "{count, plural, one {# session} other {# sessions}} would have converted in the selected period ({rate}).",
-              { count: data.conversions, rate: formatRate(data.conversion_rate) }
-            )}{" "}
+        {definition.config.crossSite
+          ? t("{converted} of {entered} users would have converted ({rate}).", {
+              converted: data.conversions.toLocaleString(),
+              entered: data.total_sessions.toLocaleString(),
+              rate: formatRate(data.conversion_rate),
+            })
+          : data.conversions === 0
+            ? t("No sessions would have converted in the selected period.")
+            : t(
+                "{count, plural, one {# session} other {# sessions}} would have converted in the selected period ({rate}).",
+                { count: data.conversions, rate: formatRate(data.conversion_rate) }
+              )}{" "}
         <span className="text-neutral-500 dark:text-neutral-400">
           {t("History is counted from events you already have.")}
         </span>

@@ -1,3 +1,5 @@
+import { analyzeCrossSiteFunnel } from "./crossSiteFunnel.js";
+import { canAccessCrossSiteScope, crossSiteIdsSchema } from "../utils/crossSite.js";
 import { FilterParams } from "@rybbit/shared";
 import { eq } from "drizzle-orm";
 import { FastifyReply, FastifyRequest } from "fastify";
@@ -20,6 +22,7 @@ export const MAX_SUMMARY_FUNNELS = 50;
 export interface SummaryFunnel {
   id: number;
   steps: FunnelStep[];
+  siteIds?: number[];
 }
 
 export interface FunnelSummary {
@@ -51,6 +54,7 @@ const savedStepSchema = z.object({
   type: z.string(),
   name: z.string().optional(),
   hostname: z.string().optional(),
+  siteId: z.number().int().min(1).max(65535).optional(),
   eventPropertyKey: z.string().optional(),
   eventPropertyValue: propertyValueSchema.optional(),
   propertyFilters: z.array(z.object({ key: z.string(), value: propertyValueSchema })).optional(),
@@ -62,7 +66,13 @@ export function parseSavedFunnels(records: { reportId: number; data: unknown }[]
   const funnels: SummaryFunnel[] = [];
   for (const record of records) {
     const steps = savedStepsSchema.safeParse((record.data as { steps?: unknown } | null)?.steps);
-    if (steps.success) funnels.push({ id: record.reportId, steps: steps.data as FunnelStep[] });
+    const scope = crossSiteIdsSchema.optional().safeParse((record.data as { siteIds?: unknown } | null)?.siteIds);
+    if (steps.success && scope.success)
+      funnels.push({
+        id: record.reportId,
+        steps: steps.data as FunnelStep[],
+        ...(scope.data ? { siteIds: scope.data } : {}),
+      });
   }
   return funnels;
 }
@@ -217,14 +227,26 @@ export const getFunnelSummaries = analyticsRoute<GetFunnelSummariesRequest>(
       return res.send({ data: empty });
     }
 
-    const rows = await runAnalyticsQuery<Record<string, unknown>>({
-      query: buildFunnelSummaryQuery(req.query, siteId, funnels),
-      params: { siteId },
-    });
+    const local = funnels.filter(funnel => !funnel.siteIds);
+    const [rows, crossSite] = await Promise.all([
+      local.length
+        ? runAnalyticsQuery<Record<string, unknown>>({
+            query: buildFunnelSummaryQuery(req.query, siteId, local),
+            params: { siteId },
+          })
+        : [],
+      Promise.all(
+        funnels.map(async funnel => {
+          if (!funnel.siteIds || !(await canAccessCrossSiteScope(req, siteId, funnel.siteIds))) return null;
+          const result = await analyzeCrossSiteFunnel(req.query, funnel.siteIds, funnel.steps);
+          return { funnel_id: funnel.id, ...result };
+        })
+      ),
+    ]);
 
     const data: FunnelSummariesResponse = {
       sessions_entered_any: toCount(rows[0]?.sessions_entered_any),
-      funnels: readFunnelSummaries(rows[0], funnels),
+      funnels: [...readFunnelSummaries(rows[0], local), ...crossSite.filter(result => result !== null)],
       truncated,
     };
     return res.send({ data });

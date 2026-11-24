@@ -1,3 +1,5 @@
+import { analyzeCrossSiteFunnel } from "./crossSiteFunnel.js";
+import { canAccessCrossSiteScope, crossSiteIdsSchema } from "../utils/crossSite.js";
 import { FilterParams } from "@rybbit/shared";
 import { FastifyReply, FastifyRequest } from "fastify";
 import SqlString from "sqlstring";
@@ -8,6 +10,7 @@ import { buildFunnelStepCondition, FunnelStep } from "./funnelSteps.js";
 
 type Funnel = {
   steps: FunnelStep[];
+  siteIds?: number[];
 };
 
 type FunnelResponse = {
@@ -127,11 +130,22 @@ export async function getFunnel(
   const { siteId } = request.params;
 
   // Validate request
-  if (!steps || steps.length < 2) {
+  if (!Array.isArray(steps) || steps.length < 2) {
     return reply.status(400).send({ error: "At least 2 steps are required for a funnel" });
   }
 
   try {
+    if (request.body.siteIds !== undefined) {
+      const scope = crossSiteIdsSchema.safeParse(request.body.siteIds);
+      if (!scope.success || steps.length > 20) {
+        return reply.status(400).send({ error: "Invalid cross-site funnel" });
+      }
+      if (!(await canAccessCrossSiteScope(request, Number(siteId), scope.data))) {
+        return reply.status(403).send({ error: "Forbidden cross-site scope" });
+      }
+      const result = await analyzeCrossSiteFunnel(request.query, scope.data, steps);
+      return reply.send({ data: result.steps });
+    }
     const data = await runAnalyticsQuery<FunnelResponse>({
       query: buildFunnelQuery(request.query, Number(siteId), steps),
       params: {

@@ -141,6 +141,7 @@ function MedianTime({ seconds, children }: { seconds: number | null; children: (
 
 export interface FunnelProps {
   steps: FunnelStep[];
+  crossSite?: boolean;
   /** The selected period. */
   metrics: FunnelMetrics;
   /** The comparison period. Step and conversion deltas are drawn against it. */
@@ -158,7 +159,7 @@ export interface FunnelProps {
  * on, and how many left at that step and how long the rest took, stated on the
  * line under the step they belong to. Every count opens the sessions behind it.
  */
-export function Funnel({ steps, metrics, previous, comparisonLabel, goal, actions }: FunnelProps) {
+export function Funnel({ steps, metrics, previous, comparisonLabel, goal, actions, crossSite }: FunnelProps) {
   const t = useExtracted();
   const typeLabels = useStepTypeLabels();
   const replayAvailable = useReplayAvailable();
@@ -204,6 +205,7 @@ export function Funnel({ steps, metrics, previous, comparisonLabel, goal, action
   // as filters, so these open the step's own session list instead of linking
   // to the Sessions page.
   const pivots = (stepIndex: number, mode: SessionsPanel["mode"]) => {
+    if (crossSite) return null;
     const active = "bg-neutral-100 dark:bg-neutral-800";
     const sessions = { stepIndex, mode, replaysOnly: false };
     const replays = { stepIndex, mode, replaysOnly: true };
@@ -243,8 +245,8 @@ export function Funnel({ steps, metrics, previous, comparisonLabel, goal, action
       <div className={cn(STEP_GRID, "hidden pb-1 text-xs @2xl:grid", MUTED)}>
         <div />
         <div>{t("Step")}</div>
-        <div>{t("Sessions that reached it")}</div>
-        <div className="text-right">{t("Sessions")}</div>
+        <div>{crossSite ? t("Users that reached it") : t("Sessions that reached it")}</div>
+        <div className="text-right">{crossSite ? t("Users") : t("Sessions")}</div>
         <div className="text-right">{t("Of start")}</div>
       </div>
 
@@ -286,7 +288,7 @@ export function Funnel({ steps, metrics, previous, comparisonLabel, goal, action
 
         return (
           <Fragment key={index}>
-            {isLast ? (
+            {isLast || crossSite ? (
               <div className={cn(STEP_GRID, "min-h-10 py-1")}>{rowContent}</div>
             ) : (
               <button

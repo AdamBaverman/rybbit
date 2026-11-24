@@ -25,13 +25,15 @@ export function CreateFunnelDialog() {
   // Funnel name
   const [name, setName] = useState("New Funnel");
 
+  const [siteIds, setSiteIds] = useState<number[] | undefined>();
+
   // Funnel analysis query (drives the live preview)
   const {
     data,
     isError,
     error,
     isLoading: isPending,
-  } = useGetFunnel(hasIncompleteSteps(steps) ? undefined : { steps }, true);
+  } = useGetFunnel(hasIncompleteSteps(steps) ? undefined : { steps, siteIds }, true);
 
   // Funnel save mutation
   const { mutate: saveFunnel, isPending: isSaving } = useSaveFunnel();
@@ -41,7 +43,7 @@ export function CreateFunnelDialog() {
     if (!name.trim() || hasIncompleteSteps(steps)) return;
 
     saveFunnel(
-      { steps, name },
+      { steps, name, siteIds },
       {
         onSuccess: () => {
           handleOpenChange(false);
@@ -61,6 +63,7 @@ export function CreateFunnelDialog() {
     setOpen(open);
     if (!open) {
       setSteps(buildDefaultSteps());
+      setSiteIds(undefined);
       setName("New Funnel");
     }
   };
@@ -85,6 +88,15 @@ export function CreateFunnelDialog() {
           setName={setName}
           steps={steps}
           setSteps={setSteps}
+          siteIds={siteIds}
+          onSiteIdsChange={selected => {
+            setSiteIds(selected);
+            setSteps(current =>
+              current.map(step =>
+                step.siteId && !selected?.includes(step.siteId) ? { ...step, siteId: undefined } : step
+              )
+            );
+          }}
           onSave={handleSaveFunnel}
           onCancel={() => handleOpenChange(false)}
           saveButtonText={t("Save Funnel")}

@@ -1,3 +1,4 @@
+import type { CrossSiteGoal } from "../../api/analytics/goals/crossSiteGoal.js";
 import { sql } from "drizzle-orm";
 import type { AnnotationColor, DashboardConfig, Filter, SegmentType } from "@rybbit/shared";
 import {
@@ -200,10 +201,7 @@ export const segments = pgTable(
     createdAt: timestamp("created_at", { mode: "string" }).defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "string" }).defaultNow(),
   },
-  table => [
-    index("segments_organization_idx").on(table.organizationId),
-    index("segments_site_idx").on(table.siteId),
-  ]
+  table => [index("segments_organization_idx").on(table.organizationId), index("segments_site_idx").on(table.siteId)]
 );
 
 // Account table (BetterAuth)
@@ -301,7 +299,7 @@ export const memberSiteAccess = pgTable(
     createdAt: timestamp("created_at", { mode: "string" }).defaultNow().notNull(),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   },
-  (table) => [
+  table => [
     unique("member_site_access_unique").on(table.memberId, table.siteId),
     index("member_site_access_member_idx").on(table.memberId),
     index("member_site_access_site_idx").on(table.siteId),
@@ -313,7 +311,9 @@ export const team = pgTable("team", {
   memberCount: integer().notNull().default(0),
   id: text().primaryKey(),
   name: text().notNull(),
-  organizationId: text().notNull().references(() => organization.id, { onDelete: "cascade" }),
+  organizationId: text()
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
   createdAt: timestamp({ mode: "string" }).notNull(),
   updatedAt: timestamp({ mode: "string" }),
 });
@@ -322,8 +322,12 @@ export const team = pgTable("team", {
 export const teamMember = pgTable("teamMember", {
   membershipKey: text().unique(),
   id: text().primaryKey(),
-  teamId: text().notNull().references(() => team.id, { onDelete: "cascade" }),
-  userId: text().notNull().references(() => user.id, { onDelete: "cascade" }),
+  teamId: text()
+    .notNull()
+    .references(() => team.id, { onDelete: "cascade" }),
+  userId: text()
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
   createdAt: timestamp({ mode: "string" }),
 });
 
@@ -342,7 +346,7 @@ export const teamSiteAccess = pgTable(
     role: text("role"),
     createdAt: timestamp("created_at", { mode: "string" }).defaultNow().notNull(),
   },
-  (table) => [
+  table => [
     unique("team_site_access_unique").on(table.teamId, table.siteId),
     index("team_site_access_team_idx").on(table.teamId),
     index("team_site_access_site_idx").on(table.siteId),
@@ -645,6 +649,7 @@ export const goals = pgTable(
     // Configuration specific to the goal type
     config: jsonb("config").notNull().$type<{
       // For 'path' type
+      crossSite?: CrossSiteGoal;
       pathPattern?: string; // e.g., "/pricing", "/product/*/view", "/docs/**"
       // For 'event' type
       eventName?: string; // e.g., "signup_completed", "file_downloaded"
@@ -841,10 +846,7 @@ export const userProfiles = pgTable(
     createdAt: timestamp("created_at", { mode: "string" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { mode: "string" }).defaultNow().notNull(),
   },
-  (table) => [
-    primaryKey({ columns: [table.siteId, table.userId] }),
-    index("user_profiles_site_idx").on(table.siteId),
-  ]
+  table => [primaryKey({ columns: [table.siteId, table.userId] }), index("user_profiles_site_idx").on(table.siteId)]
 );
 
 // User aliases - maps anonymous IDs to identified users (multi-device support)
@@ -859,7 +861,7 @@ export const userAliases = pgTable(
     userId: text("user_id").notNull(), // The identified user ID
     createdAt: timestamp("created_at", { mode: "string" }).defaultNow().notNull(),
   },
-  (table) => [
+  table => [
     unique("user_aliases_site_anon_unique").on(table.siteId, table.anonymousId),
     index("user_aliases_user_idx").on(table.siteId, table.userId),
     index("user_aliases_anon_idx").on(table.siteId, table.anonymousId),

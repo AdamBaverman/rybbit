@@ -23,13 +23,15 @@ export function EditFunnelDialog({ funnel, isOpen, onClose, isCloneMode = false 
   // Funnel name - initialized from funnel, with "(Copy)" suffix for clone mode
   const [name, setName] = useState(isCloneMode ? `${funnel.name} (Copy)` : funnel.name);
 
+  const [siteIds, setSiteIds] = useState<number[] | undefined>(funnel.siteIds);
+
   // Funnel analysis query (drives the live preview)
   const {
     data,
     isError,
     error,
     isLoading: isPending,
-  } = useGetFunnel(hasIncompleteSteps(steps) ? undefined : { steps }, true);
+  } = useGetFunnel(hasIncompleteSteps(steps) ? undefined : { steps, siteIds }, true);
 
   // Funnel save mutation
   const { mutate: saveFunnel, isPending: isSaving } = useSaveFunnel();
@@ -42,6 +44,7 @@ export function EditFunnelDialog({ funnel, isOpen, onClose, isCloneMode = false 
       {
         steps,
         name,
+        siteIds: siteIds ?? null,
         reportId: isCloneMode ? undefined : funnel.id,
       },
       {
@@ -76,6 +79,15 @@ export function EditFunnelDialog({ funnel, isOpen, onClose, isCloneMode = false 
           setName={setName}
           steps={steps}
           setSteps={setSteps}
+          siteIds={siteIds}
+          onSiteIdsChange={selected => {
+            setSiteIds(selected);
+            setSteps(current =>
+              current.map(step =>
+                step.siteId && !selected?.includes(step.siteId) ? { ...step, siteId: undefined } : step
+              )
+            );
+          }}
           onSave={handleUpdateFunnel}
           onCancel={onClose}
           saveButtonText={isCloneMode ? t("Clone Funnel") : t("Update Funnel")}

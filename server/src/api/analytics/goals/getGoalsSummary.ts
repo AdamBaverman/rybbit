@@ -1,3 +1,4 @@
+import { visibleGoals, evaluateCrossSiteGoal } from "./crossSiteGoal.js";
 import { FilterParams } from "@rybbit/shared";
 import { count, desc, eq } from "drizzle-orm";
 import { FastifyReply, FastifyRequest } from "fastify";
@@ -105,7 +106,7 @@ export const getGoalsSummary = analyticsRoute<GetGoalsSummaryRequest>(
   async (request: FastifyRequest<GetGoalsSummaryRequest>, reply: FastifyReply) => {
     const siteId = Number(request.params.siteId);
 
-    const [totalGoalsResult, siteGoals] = await Promise.all([
+    const [totalGoalsResult, storedGoals] = await Promise.all([
       db.select({ count: count() }).from(goals).where(eq(goals.siteId, siteId)),
       db
         .select()
@@ -114,6 +115,7 @@ export const getGoalsSummary = analyticsRoute<GetGoalsSummaryRequest>(
         .orderBy(desc(goals.createdAt), desc(goals.goalId))
         .limit(MAX_SUMMARY_GOALS),
     ]);
+    const siteGoals = await visibleGoals(request, siteId, storedGoals);
     const totalGoals = totalGoalsResult[0]?.count || 0;
 
     if (siteGoals.length === 0) {
@@ -139,19 +141,30 @@ export const getGoalsSummary = analyticsRoute<GetGoalsSummaryRequest>(
     const totalSessions = Number(totalSessionsData[0]?.total_sessions) || 0;
     const conversions: Record<string, number> = Object.assign({}, ...conversionData.map(rows => rows[0] ?? {}));
 
-    const rows: GoalSummaryRow[] = siteGoals.map(goal => {
-      const totalConversions = Number(conversions[`goal_${goal.goalId}_conversions`]) || 0;
-      return {
-        goalId: goal.goalId,
-        name: goal.name,
-        goalType: goal.goalType,
-        config: goal.config,
-        createdAt: goal.createdAt,
-        total_conversions: totalConversions,
-        total_sessions: totalSessions,
-        conversion_rate: totalSessions > 0 ? totalConversions / totalSessions : 0,
-      };
-    });
+    const rows: GoalSummaryRow[] = await Promise.all(
+      siteGoals.map(async goal => {
+        if (goal.config.crossSite) {
+          const stats = await evaluateCrossSiteGoal(request.query, goal);
+          return {
+            ...goal,
+            total_sessions: stats.total_sessions,
+            total_conversions: stats.conversions,
+            conversion_rate: stats.conversion_rate,
+          };
+        }
+        const totalConversions = Number(conversions[`goal_${goal.goalId}_conversions`]) || 0;
+        return {
+          goalId: goal.goalId,
+          name: goal.name,
+          goalType: goal.goalType,
+          config: goal.config,
+          createdAt: goal.createdAt,
+          total_conversions: totalConversions,
+          total_sessions: totalSessions,
+          conversion_rate: totalSessions > 0 ? totalConversions / totalSessions : 0,
+        };
+      })
+    );
 
     const summary: GoalsSummary = {
       goals: rankGoals(rows),

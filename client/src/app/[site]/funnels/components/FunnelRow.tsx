@@ -131,7 +131,7 @@ export function FunnelRow({
   // step counts, without step times or a comparison. The row then shows those
   // figures too.
   const needsAnalysis = expanded && !current && !isLoading;
-  const analysis = useGetFunnel(needsAnalysis ? { steps: funnel.steps } : undefined);
+  const analysis = useGetFunnel(needsAnalysis ? { steps: funnel.steps, siteIds: funnel.siteIds } : undefined);
   const metrics = current ?? (needsAnalysis && analysis.data?.length ? metricsFromAnalysis(analysis.data) : null);
 
   // Delete funnel mutation. mutateAsync so the modal waits for the server and shows its errors.
@@ -199,7 +199,9 @@ export function FunnelRow({
 
           {expanded ? (
             <div className={cn("mt-1 text-xs", MUTED)}>
-              {t("Steps in order within one session")}
+              {funnel.siteIds
+                ? t("Steps in order across selected sites, by user")
+                : t("Steps in order within one session")}
               {metrics && worst !== null && (
                 <>
                   {" · "}
@@ -354,6 +356,7 @@ export function FunnelRow({
           ) : metrics ? (
             <Funnel
               steps={funnel.steps}
+              crossSite={!!funnel.siteIds}
               metrics={metrics}
               previous={previous}
               comparisonLabel={comparisonLabel}

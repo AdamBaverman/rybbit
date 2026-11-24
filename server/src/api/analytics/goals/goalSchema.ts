@@ -1,3 +1,4 @@
+import { crossSiteGoalSchema } from "./crossSiteGoal.js";
 import { z } from "zod";
 import { AUTOCAPTURE_TARGET_TYPES } from "../utils/eventConditions.js";
 
@@ -8,6 +9,7 @@ export const goalBodySchema = z
     name: z.string().optional(),
     goalType: z.enum(GOAL_TYPES),
     config: z.object({
+      crossSite: crossSiteGoalSchema.optional(),
       pathPattern: z.string().optional(),
       eventName: z.string().optional(),
       valuePattern: z.string().max(512).optional(),
