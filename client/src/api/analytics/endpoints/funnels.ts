@@ -11,6 +11,7 @@ export type FunnelStep = {
   name?: string;
   type: FunnelStepType;
   hostname?: string;
+  siteId?: number;
   // Deprecated fields - kept for backwards compatibility
   eventPropertyKey?: string;
   eventPropertyValue?: string | number | boolean;
@@ -33,12 +34,14 @@ export function hasIncompleteSteps(steps: FunnelStep[]): boolean {
 
 // Funnel request type
 export type FunnelRequest = {
+  siteIds?: number[];
   steps: FunnelStep[];
   name?: string;
 };
 
 // Save funnel request type
 export type SaveFunnelRequest = {
+  siteIds?: number[] | null;
   steps: FunnelStep[];
   name: string;
   reportId?: number;
@@ -51,10 +54,12 @@ export type FunnelResponse = {
   sessions: number;
   conversion_rate: number;
   dropoff_rate: number;
+  median_seconds_to_next?: number | null;
 };
 
 // Saved funnel type
 export interface SavedFunnel {
+  siteIds?: number[];
   id: number;
   name: string;
   steps: FunnelStep[];
@@ -76,6 +81,7 @@ export interface FunnelSummary {
 }
 
 export interface FunnelSummariesResponse {
+  cross_site_users_entered?: number;
   // Distinct sessions that reached the first step of at least one saved funnel
   sessions_entered_any: number;
   funnels: FunnelSummary[];
@@ -95,6 +101,7 @@ export interface FunnelStepSessionsParams extends CommonApiParams, PaginationPar
 }
 
 export interface SaveFunnelParams {
+  siteIds?: number[] | null;
   steps: FunnelStep[];
   name: string;
   reportId?: number;
@@ -108,14 +115,10 @@ export async function saveFunnel(
   site: string | number,
   params: SaveFunnelParams
 ): Promise<{ success: boolean; funnelId: number }> {
-  const response = await authedFetch<{ success: boolean; funnelId: number }>(
-    `/sites/${site}/funnels`,
-    undefined,
-    {
-      method: "POST",
-      data: params,
-    }
-  );
+  const response = await authedFetch<{ success: boolean; funnelId: number }>(`/sites/${site}/funnels`, undefined, {
+    method: "POST",
+    data: params,
+  });
   return response;
 }
 
@@ -123,16 +126,9 @@ export async function saveFunnel(
  * Delete a saved funnel
  * DELETE /api/funnels/:funnelId/:site
  */
-export async function deleteFunnel(
-  site: string | number,
-  funnelId: number
-): Promise<{ success: boolean }> {
-  const response = await authedFetch<{ success: boolean }>(
-    `/sites/${site}/funnels/${funnelId}`,
-    undefined,
-    {
-      method: "DELETE",
-    }
-  );
+export async function deleteFunnel(site: string | number, funnelId: number): Promise<{ success: boolean }> {
+  const response = await authedFetch<{ success: boolean }>(`/sites/${site}/funnels/${funnelId}`, undefined, {
+    method: "DELETE",
+  });
   return response;
 }

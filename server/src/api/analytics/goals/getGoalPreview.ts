@@ -1,3 +1,5 @@
+import { evaluateCrossSiteGoal } from "./crossSiteGoal.js";
+import { canAccessCrossSiteScope } from "../utils/crossSite.js";
 import { FilterParams } from "@rybbit/shared";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { goals } from "../../../db/postgres/schema.js";
@@ -64,6 +66,12 @@ export const getGoalPreview = analyticsRoute<GetGoalPreviewRequest>(
     }
 
     const goal = draftGoal(siteId, parsed.data);
+    if (goal.config.crossSite) {
+      if (!(await canAccessCrossSiteScope(request, siteId, goal.config.crossSite.siteIds))) {
+        return reply.status(403).send({ error: "Forbidden cross-site scope" });
+      }
+      return reply.send({ data: await evaluateCrossSiteGoal({ ...request.query, bucket }, goal, true) });
+    }
     if (!buildGoalCondition(goal)) {
       return reply.status(400).send({ error: "Invalid goal configuration" });
     }

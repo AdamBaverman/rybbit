@@ -1,3 +1,4 @@
+import { canAccessCrossSiteScope, crossSiteIdsSchema } from "../utils/crossSite.js";
 import { eq } from "drizzle-orm";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../db/postgres/postgres.js";
@@ -9,8 +10,13 @@ import { FunnelStep } from "./funnelSteps.js";
 type Funnel = {
   steps: FunnelStep[];
   name: string;
+  siteIds?: number[] | null;
   reportId?: number; // Optional report ID for updates
 };
+
+function validCrossSiteSteps(steps: FunnelStep[], siteIds: number[]) {
+  return steps.length <= 20 && steps.every(step => step.siteId === undefined || siteIds.includes(step.siteId));
+}
 
 export async function createFunnel(
   request: FastifyRequest<{
@@ -26,7 +32,7 @@ export async function createFunnel(
   const userId = request.user?.id;
 
   // Validate request
-  if (!steps || steps.length < 2) {
+  if (!Array.isArray(steps) || steps.length < 2) {
     return reply.status(400).send({ error: "At least 2 steps are required for a funnel" });
   }
 
@@ -51,6 +57,13 @@ export async function createFunnel(
   }
 
   try {
+    const scope = crossSiteIdsSchema.nullish().safeParse(request.body.siteIds);
+    if (!scope.success || (scope.data && !validCrossSiteSteps(steps, scope.data))) {
+      return reply.status(400).send({ error: "Invalid cross-site funnel" });
+    }
+    if (scope.data && !(await canAccessCrossSiteScope(request, Number(siteId), scope.data))) {
+      return reply.status(403).send({ error: "Forbidden cross-site scope" });
+    }
     let result;
 
     if (reportId) {
@@ -67,6 +80,14 @@ export async function createFunnel(
         return reply.status(403).send({ error: "Funnel does not belong to this site" });
       }
 
+      const existingScope = (existingFunnel.data as { siteIds?: number[] })?.siteIds;
+      if (existingScope && !(await canAccessCrossSiteScope(request, Number(siteId), existingScope))) {
+        return reply.status(403).send({ error: "Forbidden cross-site scope" });
+      }
+      const siteIds = scope.data === undefined ? existingScope : scope.data;
+      if (scope.data === undefined && siteIds && !validCrossSiteSteps(steps, siteIds)) {
+        return reply.status(400).send({ error: "Invalid cross-site funnel" });
+      }
       // Update existing funnel
       result = await db
         .update(funnelsTable)
@@ -74,6 +95,7 @@ export async function createFunnel(
           data: {
             name,
             steps,
+            ...(siteIds ? { siteIds } : {}),
           },
           updatedAt: new Date().toISOString(),
         })
@@ -93,6 +115,7 @@ export async function createFunnel(
           data: {
             name,
             steps,
+            ...(scope.data ? { siteIds: scope.data } : {}),
           },
         })
         .returning({ reportId: funnelsTable.reportId });

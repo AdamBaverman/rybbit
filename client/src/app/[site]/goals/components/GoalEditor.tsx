@@ -10,6 +10,7 @@ import { useAutocaptureValues } from "@/api/analytics/hooks/events/useAutocaptur
 import { useCreateGoal } from "@/api/analytics/hooks/goals/useCreateGoal";
 import { useUpdateGoal } from "@/api/analytics/hooks/goals/useUpdateGoal";
 import { useMetric } from "@/api/analytics/hooks/useGetMetric";
+import { AnalyticsSiteScope, useAnalyticsScopeSites } from "@/components/analytics/AnalyticsSiteScope";
 import { EventTrackingNotice } from "@/components/EventTrackingNotice";
 import { SegmentedControl } from "@/components/interior/segmented-control";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,28 @@ export function GoalEditor({ siteId, mode, goal, onDone, className }: GoalEditor
     defaultValues: goalFormDefaults(goal, mode, t("{name} (Copy)", { name: goalName })),
   });
   const [properties, setProperties] = useState<PropertyFilterDraft[]>(() => propertyDraftsOf(goal));
+
+  const [siteIds, setSiteIds] = useState(goal?.config.crossSite?.siteIds);
+  const [entryPath, setEntryPath] = useState(goal?.config.crossSite?.entryPath ?? "/");
+  const [entrySiteId, setEntrySiteId] = useState(goal?.config.crossSite?.entrySiteId);
+  const [conversionSiteId, setConversionSiteId] = useState(goal?.config.crossSite?.conversionSiteId);
+  const [utmSource, setUtmSource] = useState(goal?.config.crossSite?.utmSource ?? "");
+  const { sites } = useAnalyticsScopeSites();
+  const selectedSites = sites.filter(site => siteIds?.includes(site.siteId));
+  const definitionOf = (values: GoalFormValues) => {
+    const definition = goalDefinitionOf(values, properties);
+    if (!definition || (siteIds && !entryPath.trim())) return null;
+    if (siteIds) {
+      definition.config.crossSite = {
+        siteIds,
+        entryPath: entryPath.trim(),
+        entrySiteId,
+        conversionSiteId,
+        utmSource: utmSource.trim() || undefined,
+      };
+    }
+    return definition;
+  };
 
   const values = form.watch();
   const goalType = values.goalType;
@@ -170,7 +193,7 @@ export function GoalEditor({ siteId, mode, goal, onDone, className }: GoalEditor
         : { icon: <Plus />, label: t("New goal") };
 
   const onSubmit = async (submitted: GoalFormValues) => {
-    const definition = goalDefinitionOf(submitted, properties);
+    const definition = definitionOf(submitted);
     if (!definition) return;
 
     try {
@@ -275,7 +298,13 @@ export function GoalEditor({ siteId, mode, goal, onDone, className }: GoalEditor
           <Button type="button" variant="outline" onClick={onDone}>
             {t("Cancel")}
           </Button>
-          <Button type="submit" variant="accent" loading={isSaving} loadingLabel={t("Saving...")}>
+          <Button
+            type="submit"
+            variant="accent"
+            disabled={!!siteIds && !entryPath.trim()}
+            loading={isSaving}
+            loadingLabel={t("Saving...")}
+          >
             {mode === "edit" ? t("Save changes") : t("Create goal")}
           </Button>
         </div>
@@ -328,7 +357,47 @@ export function GoalEditor({ siteId, mode, goal, onDone, className }: GoalEditor
 
       {help && <p className={cn(HELP_TEXT, "xl:hidden")}>{help}</p>}
       <EventTrackingNotice type={goalType} />
-      <GoalMatchPreview definition={goalDefinitionOf(values, properties)} />
+      <AnalyticsSiteScope
+        siteIds={siteIds}
+        onChange={selected => {
+          setSiteIds(selected);
+          if (entrySiteId && !selected?.includes(entrySiteId)) setEntrySiteId(undefined);
+          if (conversionSiteId && !selected?.includes(conversionSiteId)) setConversionSiteId(undefined);
+        }}
+      />
+      {siteIds && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label>
+            <span className={FIELD_LABEL}>{t("Entry page")}</span>
+            <Input value={entryPath} onChange={event => setEntryPath(event.target.value)} maxLength={512} />
+          </label>
+          <label>
+            <span className={FIELD_LABEL}>{t("Entry UTM source (optional)")}</span>
+            <Input value={utmSource} onChange={event => setUtmSource(event.target.value)} maxLength={512} />
+          </label>
+          {[
+            { label: t("Entry site"), value: entrySiteId, set: setEntrySiteId },
+            { label: t("Conversion site"), value: conversionSiteId, set: setConversionSiteId },
+          ].map(({ label, value, set }) => (
+            <label key={label}>
+              <span className={FIELD_LABEL}>{label}</span>
+              <select
+                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                value={value ?? ""}
+                onChange={event => set(Number(event.target.value) || undefined)}
+              >
+                <option value="">{t("Any selected site")}</option>
+                {selectedSites.map(site => (
+                  <option key={site.siteId} value={site.siteId}>
+                    {site.name || site.domain}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
+      <GoalMatchPreview definition={definitionOf(values)} />
     </form>
   );
 }

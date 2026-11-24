@@ -1,3 +1,5 @@
+import { buildCrossSiteAudience } from "../utils/crossSite.js";
+import { visibleGoals, crossGoalConditions } from "./crossSiteGoal.js";
 import { FilterParams } from "@rybbit/shared";
 import { count, desc, eq } from "drizzle-orm";
 import { FastifyReply, FastifyRequest } from "fastify";
@@ -37,6 +39,7 @@ export interface GoalSummaryRow {
 }
 
 export interface GoalsSummary {
+  cross_site?: { entered: number; converted: number };
   /** Every computed goal, most conversions first. */
   goals: GoalSummaryRow[];
   /** Sessions in the window: the denominator of every rate. */
@@ -105,7 +108,7 @@ export const getGoalsSummary = analyticsRoute<GetGoalsSummaryRequest>(
   async (request: FastifyRequest<GetGoalsSummaryRequest>, reply: FastifyReply) => {
     const siteId = Number(request.params.siteId);
 
-    const [totalGoalsResult, siteGoals] = await Promise.all([
+    const [totalGoalsResult, storedGoals] = await Promise.all([
       db.select({ count: count() }).from(goals).where(eq(goals.siteId, siteId)),
       db
         .select()
@@ -114,6 +117,7 @@ export const getGoalsSummary = analyticsRoute<GetGoalsSummaryRequest>(
         .orderBy(desc(goals.createdAt), desc(goals.goalId))
         .limit(MAX_SUMMARY_GOALS),
     ]);
+    const siteGoals = await visibleGoals(request, siteId, storedGoals);
     const totalGoals = totalGoalsResult[0]?.count || 0;
 
     if (siteGoals.length === 0) {
@@ -139,7 +143,30 @@ export const getGoalsSummary = analyticsRoute<GetGoalsSummaryRequest>(
     const totalSessions = Number(totalSessionsData[0]?.total_sessions) || 0;
     const conversions: Record<string, number> = Object.assign({}, ...conversionData.map(rows => rows[0] ?? {}));
 
+    const definitions = siteGoals.flatMap(goal => {
+      const def = crossGoalConditions(goal);
+      return def
+        ? [{ id: goal.goalId, siteIds: def.siteIds, entry: def.conditions[0], target: def.conditions[1] }]
+        : [];
+    });
+    const audiences = definitions.length
+      ? await runAnalyticsQuery<{ report_id: number; entered: number; converted: number }>(
+          buildCrossSiteAudience(request.query, definitions)
+        )
+      : [];
+    const byId = new Map(audiences.map(row => [Number(row.report_id), row]));
     const rows: GoalSummaryRow[] = siteGoals.map(goal => {
+      if (goal.config.crossSite) {
+        const audience = byId.get(goal.goalId);
+        const entered = Number(audience?.entered ?? 0);
+        const converted = Number(audience?.converted ?? 0);
+        return {
+          ...goal,
+          total_sessions: entered,
+          total_conversions: converted,
+          conversion_rate: entered ? converted / entered : 0,
+        };
+      }
       const totalConversions = Number(conversions[`goal_${goal.goalId}_conversions`]) || 0;
       return {
         goalId: goal.goalId,
@@ -155,6 +182,9 @@ export const getGoalsSummary = analyticsRoute<GetGoalsSummaryRequest>(
 
     const summary: GoalsSummary = {
       goals: rankGoals(rows),
+      ...(definitions.length
+        ? { cross_site: { entered: Number(byId.get(0)?.entered ?? 0), converted: Number(byId.get(0)?.converted ?? 0) } }
+        : {}),
       total_sessions: totalSessions,
       converting_sessions: Number(convertingData[0]?.converting_sessions) || 0,
       total_goals: totalGoals,

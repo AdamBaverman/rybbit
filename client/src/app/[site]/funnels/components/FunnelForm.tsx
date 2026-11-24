@@ -1,3 +1,4 @@
+import { AnalyticsSiteScope, useAnalyticsScopeSites } from "@/components/analytics/AnalyticsSiteScope";
 import { useExtracted } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { DialogTitle } from "@/components/ui/dialog";
@@ -9,12 +10,7 @@ import { Reorder, useDragControls } from "framer-motion";
 import round from "lodash/round";
 import { ChevronDown, ChevronUp, Funnel as FunnelIcon, GripVertical, Plus, Save, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import {
-  FunnelResponse,
-  FunnelStep,
-  FunnelStepType,
-  hasIncompleteSteps,
-} from "../../../../api/analytics/endpoints";
+import { FunnelResponse, FunnelStep, FunnelStepType, hasIncompleteSteps } from "../../../../api/analytics/endpoints";
 import { useAutocaptureValuesByType } from "../../../../api/analytics/hooks/events/useAutocaptureValues";
 import { useMetric } from "../../../../api/analytics/hooks/useGetMetric";
 import { ThreeDotLoader } from "../../../../components/Loaders";
@@ -44,6 +40,8 @@ interface FunnelFormProps {
   isPending: boolean;
   error: unknown;
   funnelData?: FunnelResponse[];
+  siteIds?: number[];
+  onSiteIdsChange?: (ids: number[] | undefined) => void;
 }
 
 interface StepCardProps {
@@ -60,7 +58,8 @@ interface StepCardProps {
   propertyFilters: PropertyFilterDraft[];
   canRemove: boolean;
   onTypeChange: (type: FunnelStepType) => void;
-  onFieldChange: (field: keyof FunnelStep, value: string) => void;
+  onFieldChange: (field: keyof FunnelStep, value: string | number | undefined) => void;
+  sites: { siteId: number; name: string; domain: string }[];
   onToggleExpanded: () => void;
   onTogglePropertyFilters: (enabled: boolean) => void;
   onPropertyFiltersChange: (filters: PropertyFilterDraft[], syncToStep: boolean) => void;
@@ -82,6 +81,7 @@ function StepCard({
   canRemove,
   onTypeChange,
   onFieldChange,
+  sites,
   onToggleExpanded,
   onTogglePropertyFilters,
   onPropertyFiltersChange,
@@ -111,6 +111,24 @@ function StepCard({
         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs dark:bg-neutral-800">
           {index + 1}
         </div>
+        {sites.length > 0 && (
+          <Select
+            value={String(step.siteId ?? "any")}
+            onValueChange={value => onFieldChange("siteId", value === "any" ? undefined : Number(value))}
+          >
+            <SelectTrigger aria-label={t("Step site")} className="max-w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">{t("Any selected site")}</SelectItem>
+              {sites.map(site => (
+                <SelectItem key={site.siteId} value={String(site.siteId)}>
+                  {site.name || site.domain}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={step.type} onValueChange={value => onTypeChange(value as FunnelStepType)}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder={t("Type")} />
@@ -148,7 +166,9 @@ function StepCard({
           className={cn("w-full", urlError && "border-red-500 dark:border-red-500")}
           onChange={e => onFieldChange("value", e.target.value)}
         />
-        {urlError && <p className="mt-1 text-xs text-red-500">{t("Enter a path (e.g., /checkout), not a full URL.")}</p>}
+        {urlError && (
+          <p className="mt-1 text-xs text-red-500">{t("Enter a path (e.g., /checkout), not a full URL.")}</p>
+        )}
         <EventTrackingNotice type={step.type} className="mt-2" />
       </div>
 
@@ -253,8 +273,14 @@ export function FunnelForm({
   isPending,
   error,
   funnelData,
+  siteIds,
+  onSiteIdsChange,
 }: FunnelFormProps) {
   const t = useExtracted();
+  const { sites } = useAnalyticsScopeSites();
+  const stepSites = sites
+    .filter(site => siteIds?.includes(site.siteId))
+    .map(site => ({ ...site, name: site.name || site.domain }));
 
   const stepTypeLabels: Record<FunnelStepType, string> = {
     page: t("Path"),
@@ -309,10 +335,7 @@ export function FunnelForm({
   const [stepIds, setStepIds] = useState<string[]>(() => steps.map((_, i) => `step-${Date.now()}-${i}`));
 
   // Derive which page-type steps have URL values
-  const stepUrlErrors = useMemo(
-    () => steps.map(step => step.type === "page" && URL_PATTERN.test(step.value)),
-    [steps]
-  );
+  const stepUrlErrors = useMemo(() => steps.map(step => step.type === "page" && URL_PATTERN.test(step.value)), [steps]);
   const hasUrlErrors = stepUrlErrors.some(Boolean);
 
   const hasIncomplete = hasIncompleteSteps(steps);
@@ -422,7 +445,7 @@ export function FunnelForm({
   };
 
   // Handle step input changes
-  const updateStep = (index: number, field: keyof FunnelStep, value: string) => {
+  const updateStep = (index: number, field: keyof FunnelStep, value: string | number | undefined) => {
     const newSteps = [...steps];
     newSteps[index] = { ...newSteps[index], [field]: value };
     setSteps(newSteps);
@@ -503,7 +526,7 @@ export function FunnelForm({
   if (funnelData && funnelData.length) {
     funnelArea = (
       <div className="pt-3">
-        <Funnel steps={steps} metrics={metricsFromAnalysis(funnelData)} />
+        <Funnel crossSite={!!siteIds} steps={steps} metrics={metricsFromAnalysis(funnelData)} />
       </div>
     );
   } else {
@@ -574,6 +597,8 @@ export function FunnelForm({
               />
             </div>
 
+            {onSiteIdsChange && <AnalyticsSiteScope siteIds={siteIds} onChange={onSiteIdsChange} />}
+
             <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto">
               <Reorder.Group axis="y" values={stepIds} onReorder={handleReorder} className="list-none space-y-2">
                 {stepIds.map((id, index) => (
@@ -582,6 +607,7 @@ export function FunnelForm({
                     id={id}
                     index={index}
                     step={steps[index]}
+                    sites={stepSites}
                     stepTypeLabels={stepTypeLabels}
                     stepValuePlaceholders={stepValuePlaceholders}
                     valueSuggestions={stepSuggestions[steps[index].type]}

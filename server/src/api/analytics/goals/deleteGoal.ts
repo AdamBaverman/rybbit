@@ -1,3 +1,4 @@
+import { canAccessCrossSiteScope } from "../utils/crossSite.js";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../db/postgres/postgres.js";
 import { goals } from "../../../db/postgres/schema.js";
@@ -46,6 +47,12 @@ export async function deleteGoal(
       return reply.status(403).send({ error: "Forbidden" });
     }
 
+    if (
+      goalToDelete.config.crossSite &&
+      !(await canAccessCrossSiteScope(request, parsedSiteId, goalToDelete.config.crossSite.siteIds))
+    ) {
+      return reply.status(403).send({ error: "Forbidden cross-site scope" });
+    }
     // Delete the goal
     const result = await db.delete(goals).where(eq(goals.goalId, parsedGoalId)).returning({ deleted: goals.goalId });
 

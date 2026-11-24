@@ -1,3 +1,4 @@
+import { canAccessCrossSiteScope } from "../utils/crossSite.js";
 import { eq } from "drizzle-orm";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../db/postgres/postgres.js";
@@ -49,6 +50,10 @@ export async function deleteFunnel(
       return reply.status(403).send({ error: "Forbidden" });
     }
 
+    const scope = (funnel.data as { siteIds?: number[] })?.siteIds;
+    if (scope && !(await canAccessCrossSiteScope(request, parsedSiteId, scope))) {
+      return reply.status(403).send({ error: "Forbidden cross-site scope" });
+    }
     // Delete the funnel
     await db.delete(funnelsTable).where(eq(funnelsTable.reportId, parsedFunnelId));
 

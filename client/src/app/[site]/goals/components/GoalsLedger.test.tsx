@@ -128,6 +128,26 @@ describe("GoalsSummaryBand", () => {
       />
     );
 
+  it("shows the deduplicated cross-site audience and its own denominator", () => {
+    const goals = [goal(1, "Payment", 23, 2391), goal(2, "All paid", 23, 2391)];
+    for (const goal of goals) goal.config.crossSite = { siteIds: [3, 4], entryPath: "/" };
+    const summary = { ...summaryOf(goals, 10000, 0), cross_site: { entered: 2391, converted: 23 } };
+    render(
+      <GoalsSummaryBand
+        summary={summary}
+        rows={[]}
+        isLoading={false}
+        comparisonEnabled={false}
+        isLoadingComparison={false}
+      />
+    );
+    expect(screen.getByText("Users completing cross-site goals").parentElement?.parentElement?.textContent).toContain(
+      "23"
+    );
+    expect(screen.getByText(/of 2,391 eligible users/)).toBeTruthy();
+    expect(screen.queryByText("Sessions")).toBeNull();
+  });
+
   it("opens with sessions, converting sessions and goal completions", () => {
     renderBand(false);
 

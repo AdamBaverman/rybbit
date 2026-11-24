@@ -1,3 +1,5 @@
+import { mapReportBatches } from "../utils/crossSite.js";
+import { visibleGoals, evaluateCrossSiteGoal } from "./crossSiteGoal.js";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../db/postgres/postgres.js";
 import { goals } from "../../../db/postgres/schema.js";
@@ -151,7 +153,7 @@ export const getGoals = analyticsRoute<GetGoalsRequest>(
     // The total (for pagination metadata) and the page are independent reads.
     // Drizzle's count() maps the Postgres bigint to a number; a raw
     // sql`count(*)` comes back as a string.
-    const [totalGoalsResult, siteGoals] = await Promise.all([
+    const [totalGoalsResult, storedGoals] = await Promise.all([
       db
         .select({ count: count() })
         .from(goals)
@@ -165,6 +167,7 @@ export const getGoals = analyticsRoute<GetGoalsRequest>(
         .offset((pageNumber - 1) * pageSizeNumber),
     ]);
 
+    const siteGoals = await visibleGoals(request, Number(siteId), storedGoals);
     const totalGoals = Number(totalGoalsResult[0]?.count ?? 0);
     const totalPages = Math.ceil(totalGoals / pageSizeNumber);
 
@@ -205,31 +208,19 @@ export const getGoals = analyticsRoute<GetGoalsRequest>(
     ]);
     const totalSessions = totalSessionsData[0]?.total_sessions || 0;
 
-    if (conversionData === null) {
-      // If no valid goals to calculate, return the goals without conversion data
-      const goalsWithZeroConversions = siteGoals.map(goal => ({
-        ...goal,
-        total_conversions: 0,
-        total_sessions: totalSessions,
-        conversion_rate: 0,
-      }));
-
-      return reply.send({
-        data: goalsWithZeroConversions,
-        meta: {
-          total: totalGoals,
-          page: pageNumber,
-          pageSize: pageSizeNumber,
-          totalPages,
-        },
-      });
-    }
-
-    // If we didn't get any results, use zeros
-    const conversions = conversionData[0] || {};
+    const conversions = conversionData?.[0] ?? {};
 
     // Combine goals data with conversion metrics
-    const goalsWithConversions: GoalWithConversions[] = siteGoals.map(goal => {
+    const goalsWithConversions: GoalWithConversions[] = await mapReportBatches(siteGoals, async goal => {
+      if (goal.config.crossSite) {
+        const stats = await evaluateCrossSiteGoal(request.query, goal);
+        return {
+          ...goal,
+          total_sessions: stats.total_sessions,
+          total_conversions: stats.conversions,
+          conversion_rate: stats.conversion_rate,
+        };
+      }
       const totalConversions = conversions[`goal_${goal.goalId}_conversions`] || 0;
       const conversionRate = totalSessions > 0 ? totalConversions / totalSessions : 0;
 

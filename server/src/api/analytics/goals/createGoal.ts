@@ -1,3 +1,4 @@
+import { canAccessCrossSiteScope } from "../utils/crossSite.js";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../db/postgres/postgres.js";
 import { goals } from "../../../db/postgres/schema.js";
@@ -27,6 +28,10 @@ export async function createGoal(
     const userHasAccessToSite = await getUserHasAccessToSite(request, siteId.toString());
     if (!userHasAccessToSite) {
       return reply.status(403).send({ error: "Forbidden" });
+    }
+
+    if (config.crossSite && !(await canAccessCrossSiteScope(request, siteId, config.crossSite.siteIds))) {
+      return reply.status(403).send({ error: "Forbidden cross-site scope" });
     }
 
     // Insert the goal into the database

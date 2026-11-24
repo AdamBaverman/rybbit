@@ -276,9 +276,15 @@ export default function GoalsPage() {
             )}
 
             <p className={`px-1 text-xs ${MUTED}`}>
-              {t(
-                "A conversion is a session that completed the goal at least once. Rate is conversions divided by the {sessions} sessions in range.",
-                { sessions: summary.total_sessions.toLocaleString() }
+              {summary.goals.some(goal => !goal.config.crossSite) &&
+                t("Single-site goal rates use the {sessions} sessions on this site in the selected period.", {
+                  sessions: summary.total_sessions.toLocaleString(),
+                })}
+              {summary.cross_site && (
+                <>
+                  {" "}
+                  {t("Each cross-site goal rate is the percentage of its entry users who reached its conversion step.")}
+                </>
               )}
               {summary.total_goals > summary.goals.length && (
                 <>

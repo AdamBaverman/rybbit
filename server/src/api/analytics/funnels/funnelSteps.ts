@@ -16,6 +16,7 @@ export type FunnelStep = {
   name?: string;
   type: FunnelStepType;
   hostname?: string;
+  siteId?: number;
   // Deprecated fields - kept for backwards compatibility
   eventPropertyKey?: string;
   eventPropertyValue?: string | number | boolean;

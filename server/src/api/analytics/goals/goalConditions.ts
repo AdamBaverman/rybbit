@@ -8,6 +8,7 @@ import {
 } from "../utils/eventConditions.js";
 
 type GoalConfig = {
+  crossSite?: unknown;
   pathPattern?: string;
   eventName?: string;
   valuePattern?: string;
@@ -22,6 +23,7 @@ type GoalConditionInput = {
 };
 
 export function buildGoalCondition(goal: GoalConditionInput) {
+  if (goal.config.crossSite) return null;
   const filters = resolvePropertyFilters(goal.config);
 
   if (goal.goalType === "path") {

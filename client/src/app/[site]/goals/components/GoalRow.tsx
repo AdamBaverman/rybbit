@@ -172,6 +172,9 @@ export function GoalRow({
               {label}
             </span>
             <DefinitionChip goal={goal} />
+            {goal.config.crossSite && (
+              <span className="shrink-0 text-xs text-muted-foreground">{t("Cross-site · users")}</span>
+            )}
           </div>
         </div>
 

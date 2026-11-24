@@ -49,13 +49,17 @@ export const FUNNEL_ROW_GRID =
 const MUTED = "text-neutral-500 dark:text-neutral-400";
 
 /** One bar per step: the share of entering sessions still in the funnel at that step. */
-function StepStrip({ metrics }: { metrics: FunnelMetrics }) {
+function StepStrip({ metrics, crossSite }: { metrics: FunnelMetrics; crossSite?: boolean }) {
   const t = useExtracted();
   return (
     <div
       className="flex h-6 items-end gap-[3px]"
       role="img"
-      aria-label={t("Sessions remaining at each of {count} steps", { count: String(metrics.steps.length) })}
+      aria-label={
+        crossSite
+          ? t("Users remaining at each of {count} steps", { count: String(metrics.steps.length) })
+          : t("Sessions remaining at each of {count} steps", { count: String(metrics.steps.length) })
+      }
     >
       {metrics.steps.map((step, index) => (
         <div
@@ -131,7 +135,7 @@ export function FunnelRow({
   // step counts, without step times or a comparison. The row then shows those
   // figures too.
   const needsAnalysis = expanded && !current && !isLoading;
-  const analysis = useGetFunnel(needsAnalysis ? { steps: funnel.steps } : undefined);
+  const analysis = useGetFunnel(needsAnalysis ? { steps: funnel.steps, siteIds: funnel.siteIds } : undefined);
   const metrics = current ?? (needsAnalysis && analysis.data?.length ? metricsFromAnalysis(analysis.data) : null);
 
   // Delete funnel mutation. mutateAsync so the modal waits for the server and shows its errors.
@@ -199,7 +203,9 @@ export function FunnelRow({
 
           {expanded ? (
             <div className={cn("mt-1 text-xs", MUTED)}>
-              {t("Steps in order within one session")}
+              {funnel.siteIds
+                ? t("Steps in order across selected sites, by user")
+                : t("Steps in order within one session")}
               {metrics && worst !== null && (
                 <>
                   {" · "}
@@ -288,7 +294,11 @@ export function FunnelRow({
         </div>
 
         <div className="hidden @3xl:block">
-          {isLoading ? <Skeleton className="h-6 w-12 rounded" /> : metrics ? <StepStrip metrics={metrics} /> : null}
+          {isLoading ? (
+            <Skeleton className="h-6 w-12 rounded" />
+          ) : metrics ? (
+            <StepStrip crossSite={!!funnel.siteIds} metrics={metrics} />
+          ) : null}
         </div>
         <div className="hidden text-right text-sm text-neutral-900 dark:text-neutral-100 @3xl:block">
           {figure(metrics?.entered.toLocaleString())}
@@ -354,6 +364,7 @@ export function FunnelRow({
           ) : metrics ? (
             <Funnel
               steps={funnel.steps}
+              crossSite={!!funnel.siteIds}
               metrics={metrics}
               previous={previous}
               comparisonLabel={comparisonLabel}
