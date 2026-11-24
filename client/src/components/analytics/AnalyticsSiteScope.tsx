@@ -20,19 +20,23 @@ export function AnalyticsSiteScope({
 }) {
   const t = useExtracted();
   const { anchor, sites } = useAnalyticsScopeSites();
+  const current = sites.find(site => site.siteId === anchor);
   const choices = sites.filter(site => site.siteId !== anchor);
   if (!choices.length && !siteIds) return null;
 
   return (
     <fieldset className="space-y-2 rounded-md border p-3">
-      <legend className="px-1 text-sm font-medium">{t("Sites in this analysis")}</legend>
+      <legend className="px-1 text-sm font-medium">{t("Additional sites")}</legend>
+      <p className="text-sm">
+        {t("Current site: {site}", { site: current?.name || current?.domain || String(anchor) })}
+      </p>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-        {sites.map(site => (
+        {choices.map(site => (
           <label key={site.siteId} className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={site.siteId === anchor || siteIds?.includes(site.siteId) === true}
-              disabled={site.siteId === anchor}
+              checked={siteIds?.includes(site.siteId) === true}
+              disabled={!!siteIds && siteIds.length >= 20 && !siteIds.includes(site.siteId)}
               onChange={event => {
                 const selected = siteIds ?? [anchor];
                 const next = event.target.checked
@@ -48,6 +52,11 @@ export function AnalyticsSiteScope({
       {siteIds && (
         <p className="text-xs text-muted-foreground">
           {t("Cross-site analysis counts users across the selected sites.")}
+        </p>
+      )}
+      {siteIds && sites.some(site => siteIds.includes(site.siteId) && site.saltUserIds) && (
+        <p className="text-sm text-amber-700 dark:text-amber-300">
+          {t("A selected site rotates user identifiers. Cross-site conversions may be undercounted.")}
         </p>
       )}
     </fieldset>

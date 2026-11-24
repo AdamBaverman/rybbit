@@ -137,7 +137,11 @@ export async function getFunnel(
   try {
     if (request.body.siteIds !== undefined) {
       const scope = crossSiteIdsSchema.safeParse(request.body.siteIds);
-      if (!scope.success || steps.length > 20) {
+      if (
+        !scope.success ||
+        steps.length > 20 ||
+        steps.some(step => step.siteId !== undefined && !scope.data.includes(step.siteId))
+      ) {
         return reply.status(400).send({ error: "Invalid cross-site funnel" });
       }
       if (!(await canAccessCrossSiteScope(request, Number(siteId), scope.data))) {

@@ -3,7 +3,12 @@ import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { goals } from "../../../db/postgres/schema.js";
 import { runAnalyticsQuery } from "../utils/analyticsQuery.js";
-import { buildCrossSiteSequence, canAccessCrossSiteScope, crossSiteIdsSchema } from "../utils/crossSite.js";
+import {
+  mapReportBatches,
+  buildCrossSiteSequence,
+  canAccessCrossSiteScope,
+  crossSiteIdsSchema,
+} from "../utils/crossSite.js";
 import { buildPageCondition } from "../utils/eventConditions.js";
 import { TimeBucketToFn } from "../utils/timeWindow.js";
 import { buildGoalCondition } from "./goalConditions.js";
@@ -30,13 +35,31 @@ export async function visibleGoals<T extends Pick<SiteGoal, "config">>(
   anchor: number,
   goals: T[]
 ) {
-  const visible = await Promise.all(
-    goals.map(
-      async goal =>
-        !goal.config.crossSite || (await canAccessCrossSiteScope(req, anchor, goal.config.crossSite.siteIds))
-    )
+  const visible = await mapReportBatches(
+    goals,
+    async goal => !goal.config.crossSite || (await canAccessCrossSiteScope(req, anchor, goal.config.crossSite.siteIds))
   );
   return goals.filter((_, index) => visible[index]);
+}
+
+export function crossGoalConditions(goal: Pick<SiteGoal, "config" | "goalType">) {
+  const { crossSite, ...config } = goal.config;
+  if (!crossSite) return null;
+  const conversion = buildGoalCondition({ goalType: goal.goalType, config });
+  if (!conversion) return null;
+  const siteCondition = (siteId?: number) =>
+    siteId !== undefined && crossSite.siteIds.includes(siteId) ? ` AND site_id = ${siteId}` : "";
+  const entry = buildPageCondition(
+    crossSite.entryPath,
+    crossSite.utmSource ? [{ key: "utm_source", value: crossSite.utmSource }] : []
+  );
+  return {
+    siteIds: crossSite.siteIds,
+    conditions: [
+      `(${entry})${siteCondition(crossSite.entrySiteId)}`,
+      `(${conversion})${siteCondition(crossSite.conversionSiteId)}`,
+    ],
+  };
 }
 
 export async function evaluateCrossSiteGoal(
@@ -44,22 +67,11 @@ export async function evaluateCrossSiteGoal(
   goal: Pick<SiteGoal, "config" | "goalType">,
   series = false
 ) {
-  const { crossSite, ...config } = goal.config;
-  if (!crossSite) return { total_sessions: 0, conversions: 0, conversion_rate: 0, series: [] };
-  const conversion = buildGoalCondition({ goalType: goal.goalType, config });
-  if (!conversion) return { total_sessions: 0, conversions: 0, conversion_rate: 0, series: [] };
-  const siteCondition = (siteId?: number) =>
-    siteId !== undefined && crossSite.siteIds.includes(siteId) ? ` AND site_id = ${siteId}` : "";
-  const entry = buildPageCondition(
-    crossSite.entryPath,
-    crossSite.utmSource ? [{ key: "utm_source", value: crossSite.utmSource }] : []
-  );
-  const sequence = buildCrossSiteSequence(query, crossSite.siteIds, [
-    `(${entry})${siteCondition(crossSite.entrySiteId)}`,
-    `(${conversion})${siteCondition(crossSite.conversionSiteId)}`,
-  ]);
+  const definition = crossGoalConditions(goal);
+  if (!definition) return { total_sessions: 0, conversions: 0, conversion_rate: 0, series: [] };
+  const sequence = buildCrossSiteSequence(query, definition.siteIds, definition.conditions);
   const bucket = TimeBucketToFn[query.bucket ?? "hour"];
-  const params = { siteIds: crossSite.siteIds, timeZone: query.time_zone || "UTC" };
+  const params = { siteIds: definition.siteIds, timeZone: query.time_zone || "UTC" };
   const rows = await runAnalyticsQuery<{ time: string; total_sessions: number; conversions: number }>({
     query: `${sequence}
       SELECT ${series ? `toDateTime(${bucket}(toDateTime(step_0, {timeZone:String}))) AS time,` : ""}

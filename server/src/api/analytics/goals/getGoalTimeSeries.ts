@@ -1,3 +1,4 @@
+import { mapReportBatches } from "../utils/crossSite.js";
 import { visibleGoals, evaluateCrossSiteGoal } from "./crossSiteGoal.js";
 import { FilterParams } from "@rybbit/shared";
 import { FastifyReply, FastifyRequest } from "fastify";
@@ -155,13 +156,12 @@ export const getGoalTimeSeries = analyticsRoute<GetGoalTimeSeriesRequest>(
     );
     const [local, crossSite] = await Promise.all([
       query ? runAnalyticsQuery<GoalTimeSeriesPoint>({ query, params: { siteId, timeZone } }) : [],
-      Promise.all(
-        visible
-          .filter(goal => goal.config.crossSite)
-          .map(async goal => {
-            const result = await evaluateCrossSiteGoal(req.query, goal, true);
-            return result.series.map(point => ({ ...point, goal_id: goal.goalId }));
-          })
+      mapReportBatches(
+        visible.filter(goal => goal.config.crossSite),
+        async goal => {
+          const result = await evaluateCrossSiteGoal(req.query, goal, true);
+          return result.series.map(point => ({ ...point, goal_id: goal.goalId }));
+        }
       ),
     ]);
     return res.send({

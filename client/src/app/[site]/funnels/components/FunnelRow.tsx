@@ -49,13 +49,17 @@ export const FUNNEL_ROW_GRID =
 const MUTED = "text-neutral-500 dark:text-neutral-400";
 
 /** One bar per step: the share of entering sessions still in the funnel at that step. */
-function StepStrip({ metrics }: { metrics: FunnelMetrics }) {
+function StepStrip({ metrics, crossSite }: { metrics: FunnelMetrics; crossSite?: boolean }) {
   const t = useExtracted();
   return (
     <div
       className="flex h-6 items-end gap-[3px]"
       role="img"
-      aria-label={t("Sessions remaining at each of {count} steps", { count: String(metrics.steps.length) })}
+      aria-label={
+        crossSite
+          ? t("Users remaining at each of {count} steps", { count: String(metrics.steps.length) })
+          : t("Sessions remaining at each of {count} steps", { count: String(metrics.steps.length) })
+      }
     >
       {metrics.steps.map((step, index) => (
         <div
@@ -290,7 +294,11 @@ export function FunnelRow({
         </div>
 
         <div className="hidden @3xl:block">
-          {isLoading ? <Skeleton className="h-6 w-12 rounded" /> : metrics ? <StepStrip metrics={metrics} /> : null}
+          {isLoading ? (
+            <Skeleton className="h-6 w-12 rounded" />
+          ) : metrics ? (
+            <StepStrip crossSite={!!funnel.siteIds} metrics={metrics} />
+          ) : null}
         </div>
         <div className="hidden text-right text-sm text-neutral-900 dark:text-neutral-100 @3xl:block">
           {figure(metrics?.entered.toLocaleString())}

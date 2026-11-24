@@ -130,6 +130,8 @@ export default function FunnelsPage() {
           <>
             <FunnelStatBand
               rows={rows}
+              crossSiteUsers={current.data?.cross_site_users_entered}
+              previousCrossSiteUsers={previousData?.cross_site_users_entered}
               sessionsEntered={current.data?.sessions_entered_any}
               previousSessionsEntered={previousData?.sessions_entered_any}
               comparisonEnabled={comparisonEnabled}

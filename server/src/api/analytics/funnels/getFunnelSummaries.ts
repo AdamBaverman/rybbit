@@ -1,5 +1,10 @@
-import { analyzeCrossSiteFunnel } from "./crossSiteFunnel.js";
-import { canAccessCrossSiteScope, crossSiteIdsSchema } from "../utils/crossSite.js";
+import { analyzeCrossSiteFunnel, crossStepCondition } from "./crossSiteFunnel.js";
+import {
+  mapReportBatches,
+  buildCrossSiteAudience,
+  canAccessCrossSiteScope,
+  crossSiteIdsSchema,
+} from "../utils/crossSite.js";
 import { FilterParams } from "@rybbit/shared";
 import { eq } from "drizzle-orm";
 import { FastifyReply, FastifyRequest } from "fastify";
@@ -38,6 +43,7 @@ export interface FunnelSummary {
 }
 
 export interface FunnelSummariesResponse {
+  cross_site_users_entered?: number;
   /** Distinct sessions that reached the first step of at least one summarised funnel. */
   sessions_entered_any: number;
   funnels: FunnelSummary[];
@@ -235,18 +241,37 @@ export const getFunnelSummaries = analyticsRoute<GetFunnelSummariesRequest>(
             params: { siteId },
           })
         : [],
-      Promise.all(
-        funnels.map(async funnel => {
-          if (!funnel.siteIds || !(await canAccessCrossSiteScope(req, siteId, funnel.siteIds))) return null;
-          const result = await analyzeCrossSiteFunnel(req.query, funnel.siteIds, funnel.steps);
-          return { funnel_id: funnel.id, ...result };
-        })
-      ),
+      mapReportBatches(funnels, async funnel => {
+        if (!funnel.siteIds || !(await canAccessCrossSiteScope(req, siteId, funnel.siteIds))) return null;
+        const result = await analyzeCrossSiteFunnel(req.query, funnel.siteIds, funnel.steps);
+        return {
+          funnel_id: funnel.id,
+          ...result,
+          definition: {
+            id: funnel.id,
+            siteIds: funnel.siteIds,
+            entry: crossStepCondition(funnel.steps[0], funnel.siteIds),
+          },
+        };
+      }),
     ]);
 
+    const visible = crossSite.filter(result => result !== null);
+    let entered: number | undefined;
+    if (visible.length === 1) entered = visible[0].steps[0].users;
+    if (visible.length > 1) {
+      const audience = await runAnalyticsQuery<{ report_id: number; entered: number }>(
+        buildCrossSiteAudience(
+          req.query,
+          visible.map(result => result.definition)
+        )
+      );
+      entered = Number(audience.find(row => Number(row.report_id) === 0)?.entered ?? 0);
+    }
     const data: FunnelSummariesResponse = {
+      ...(entered !== undefined ? { cross_site_users_entered: entered } : {}),
       sessions_entered_any: toCount(rows[0]?.sessions_entered_any),
-      funnels: [...readFunnelSummaries(rows[0], local), ...crossSite.filter(result => result !== null)],
+      funnels: [...readFunnelSummaries(rows[0], local), ...visible.map(({ definition, ...summary }) => summary)],
       truncated,
     };
     return res.send({ data });

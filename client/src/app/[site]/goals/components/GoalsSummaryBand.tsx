@@ -21,7 +21,9 @@ interface GoalsSummaryBandProps {
 }
 
 const sumConversions = (summary: GoalsSummary | undefined) =>
-  summary ? summary.goals.reduce((sum, goal) => sum + goal.total_conversions, 0) : undefined;
+  summary
+    ? summary.goals.filter(goal => !goal.config.crossSite).reduce((sum, goal) => sum + goal.total_conversions, 0)
+    : undefined;
 
 /**
  * The page's opening numbers: how many sessions there were, how many of them
@@ -41,37 +43,50 @@ export function GoalsSummaryBand({
   const sessions = summary?.total_sessions ?? 0;
   const converting = summary?.converting_sessions ?? 0;
   const completions = sumConversions(summary) ?? 0;
-  const goalCount = summary?.goals.length ?? 0;
+  const cross = summary?.cross_site;
+  const goalCount = summary?.goals.filter(goal => !goal.config.crossSite).length ?? 0;
+  const showLocal = !cross || goalCount > 0;
 
   const mover = bestMover(rows);
   const slipping = slippingGoal(rows);
 
   const cells: (StatBandCell | false)[] = [
-    {
+    showLocal && {
       id: "sessions",
       icon: <Rewind className={ICON} />,
       label: t("Sessions"),
       value: sessions.toLocaleString(),
       delta: percentDelta(sessions, previous?.total_sessions),
-      sub: t("The denominator of every rate"),
+      sub: cross ? t("Sessions on the current site") : t("The denominator of every rate"),
     },
-    {
+    showLocal && {
       id: "converting",
       icon: <Target className={ICON} />,
-      label: t("Converting sessions"),
+      label: cross ? t("Sessions completing single-site goals") : t("Converting sessions"),
       value: converting.toLocaleString(),
       delta: percentDelta(converting, previous?.converting_sessions),
       sub: t("{rate} completed at least one goal", {
         rate: `${(sessions > 0 ? (converting / sessions) * 100 : 0).toFixed(1)}%`,
       }),
     },
-    {
+    showLocal && {
       id: "completions",
       icon: <CheckCheck className={ICON} />,
-      label: t("Goal completions"),
+      label: cross ? t("Single-site goal completions") : t("Goal completions"),
       value: completions.toLocaleString(),
       delta: percentDelta(completions, sumConversions(previous)),
       sub: t("Across {count, plural, one {# goal} other {# goals}}", { count: goalCount }),
+    },
+    !!cross && {
+      id: "cross-site-conversions",
+      icon: <Target className={ICON} />,
+      label: t("Users completing cross-site goals"),
+      value: cross.converted.toLocaleString(),
+      delta: percentDelta(cross.converted, previous?.cross_site?.converted),
+      sub: t("{rate} of {count} eligible users", {
+        rate: formatRate(cross.entered ? cross.converted / cross.entered : 0),
+        count: cross.entered.toLocaleString(),
+      }),
     },
     comparisonEnabled && {
       id: "best-mover",

@@ -1,3 +1,4 @@
+import { mapReportBatches } from "../utils/crossSite.js";
 import { visibleGoals, evaluateCrossSiteGoal } from "./crossSiteGoal.js";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../db/postgres/postgres.js";
@@ -210,28 +211,26 @@ export const getGoals = analyticsRoute<GetGoalsRequest>(
     const conversions = conversionData?.[0] ?? {};
 
     // Combine goals data with conversion metrics
-    const goalsWithConversions: GoalWithConversions[] = await Promise.all(
-      siteGoals.map(async goal => {
-        if (goal.config.crossSite) {
-          const stats = await evaluateCrossSiteGoal(request.query, goal);
-          return {
-            ...goal,
-            total_sessions: stats.total_sessions,
-            total_conversions: stats.conversions,
-            conversion_rate: stats.conversion_rate,
-          };
-        }
-        const totalConversions = conversions[`goal_${goal.goalId}_conversions`] || 0;
-        const conversionRate = totalSessions > 0 ? totalConversions / totalSessions : 0;
-
+    const goalsWithConversions: GoalWithConversions[] = await mapReportBatches(siteGoals, async goal => {
+      if (goal.config.crossSite) {
+        const stats = await evaluateCrossSiteGoal(request.query, goal);
         return {
           ...goal,
-          total_conversions: totalConversions,
-          total_sessions: totalSessions,
-          conversion_rate: conversionRate,
+          total_sessions: stats.total_sessions,
+          total_conversions: stats.conversions,
+          conversion_rate: stats.conversion_rate,
         };
-      })
-    );
+      }
+      const totalConversions = conversions[`goal_${goal.goalId}_conversions`] || 0;
+      const conversionRate = totalSessions > 0 ? totalConversions / totalSessions : 0;
+
+      return {
+        ...goal,
+        total_conversions: totalConversions,
+        total_sessions: totalSessions,
+        conversion_rate: conversionRate,
+      };
+    });
 
     return reply.send({
       data: goalsWithConversions,

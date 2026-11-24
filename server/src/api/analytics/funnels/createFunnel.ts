@@ -14,6 +14,10 @@ type Funnel = {
   reportId?: number; // Optional report ID for updates
 };
 
+function validCrossSiteSteps(steps: FunnelStep[], siteIds: number[]) {
+  return steps.length <= 20 && steps.every(step => step.siteId === undefined || siteIds.includes(step.siteId));
+}
+
 export async function createFunnel(
   request: FastifyRequest<{
     Body: Funnel;
@@ -54,7 +58,7 @@ export async function createFunnel(
 
   try {
     const scope = crossSiteIdsSchema.nullish().safeParse(request.body.siteIds);
-    if (!scope.success || (scope.data && steps.length > 20)) {
+    if (!scope.success || (scope.data && !validCrossSiteSteps(steps, scope.data))) {
       return reply.status(400).send({ error: "Invalid cross-site funnel" });
     }
     if (scope.data && !(await canAccessCrossSiteScope(request, Number(siteId), scope.data))) {
@@ -81,6 +85,9 @@ export async function createFunnel(
         return reply.status(403).send({ error: "Forbidden cross-site scope" });
       }
       const siteIds = scope.data === undefined ? existingScope : scope.data;
+      if (scope.data === undefined && siteIds && !validCrossSiteSteps(steps, siteIds)) {
+        return reply.status(400).send({ error: "Invalid cross-site funnel" });
+      }
       // Update existing funnel
       result = await db
         .update(funnelsTable)

@@ -3,12 +3,15 @@ import { buildCrossSiteSequence } from "../utils/crossSite.js";
 import { runAnalyticsQuery } from "../utils/analyticsQuery.js";
 import { buildFunnelStepCondition, type FunnelStep } from "./funnelSteps.js";
 
+export function crossStepCondition(step: FunnelStep, siteIds: number[]) {
+  const condition = buildFunnelStepCondition(step);
+  if (step.siteId === undefined) return condition;
+  if (!siteIds.includes(step.siteId)) throw new Error("Step site outside funnel scope");
+  return `${condition} AND site_id = ${step.siteId}`;
+}
+
 export async function analyzeCrossSiteFunnel(query: FilterParams<{}>, siteIds: number[], steps: FunnelStep[]) {
-  const conditions = steps.map(step => {
-    const condition = buildFunnelStepCondition(step);
-    if (step.siteId === undefined) return condition;
-    return siteIds.includes(step.siteId) ? `${condition} AND site_id = ${step.siteId}` : "0";
-  });
+  const conditions = steps.map(step => crossStepCondition(step, siteIds));
   const last = steps.length - 1;
   const aggregates = steps.flatMap((_, index) => [
     `countIf(step_${index} > 0) AS reached_${index}`,

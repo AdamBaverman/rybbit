@@ -81,6 +81,7 @@ export interface FunnelSummary {
 }
 
 export interface FunnelSummariesResponse {
+  cross_site_users_entered?: number;
   // Distinct sessions that reached the first step of at least one saved funnel
   sessions_entered_any: number;
   funnels: FunnelSummary[];

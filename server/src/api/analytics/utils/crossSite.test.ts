@@ -48,6 +48,7 @@ describe("cross-site analytics scope", () => {
     );
     expect(query).toContain("PREWHERE site_id IN {siteIds:Array(UInt16)}");
     expect(query).toContain("GROUP BY user_id");
-    expect(query).toContain("t -> t >= step_0");
+    expect(query).toContain("RANGE UNBOUNDED PRECEDING");
+    expect(query).toContain("strict_once");
   });
 });

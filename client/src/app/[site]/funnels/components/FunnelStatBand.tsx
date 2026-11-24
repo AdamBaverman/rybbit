@@ -17,6 +17,8 @@ import { useStepTypeLabels } from "./useStepTypeLabels";
 
 export interface FunnelStatBandProps {
   rows: FunnelRowData[];
+  crossSiteUsers?: number;
+  previousCrossSiteUsers?: number;
   /** Sessions that entered at least one funnel in the selected period. */
   sessionsEntered: number | undefined;
   /** The same for the comparison period. Undefined when the comparison is off or not loaded. */
@@ -30,6 +32,8 @@ export interface FunnelStatBandProps {
 export function FunnelStatBand({
   rows,
   sessionsEntered,
+  crossSiteUsers,
+  previousCrossSiteUsers,
   previousSessionsEntered,
   comparisonEnabled,
   isLoading,
@@ -76,10 +80,15 @@ export function FunnelStatBand({
         value: best ? best.funnel.name : "—",
         title: best?.funnel.name,
         sub: best
-          ? t("{rate} of {count} sessions convert", {
-              rate: formatRate(best.current!.conversion!),
-              count: best.current!.entered.toLocaleString(),
-            })
+          ? best.funnel.siteIds
+            ? t("{rate} of {count} users convert", {
+                rate: formatRate(best.current!.conversion!),
+                count: best.current!.entered.toLocaleString(),
+              })
+            : t("{rate} of {count} sessions convert", {
+                rate: formatRate(best.current!.conversion!),
+                count: best.current!.entered.toLocaleString(),
+              })
           : "",
       };
 
@@ -92,7 +101,8 @@ export function FunnelStatBand({
       })
     : null;
 
-  const cells: StatBandCell[] = [
+  const hasCross = rows.some(row => row.funnel.siteIds);
+  const cells: (StatBandCell | false)[] = [
     {
       icon: <Funnel className="h-3 w-3" />,
       label: t("Funnels tracked"),
@@ -107,11 +117,11 @@ export function FunnelStatBand({
                 improved: String(moves.improved),
                 declined: String(moves.declined),
               })
-            : t("{count} with sessions in this period", { count: String(withSessions) }),
+            : t("{count} with entries in this period", { count: String(withSessions) }),
     },
-    {
+    (!hasCross || rows.some(row => !row.funnel.siteIds)) && {
       icon: <LogIn className="h-3 w-3" />,
-      label: t("Sessions entering any funnel"),
+      label: hasCross ? t("Sessions entering single-site funnels") : t("Sessions entering any funnel"),
       // No figure is not zero: the summary may have failed to load.
       value: sessionsEntered === undefined ? "—" : sessionsEntered.toLocaleString(),
       delta: percentDelta(sessionsEntered, previousSessionsEntered),
@@ -120,13 +130,29 @@ export function FunnelStatBand({
           ? ""
           : t("{count} in the comparison period", { count: previousSessionsEntered.toLocaleString() }),
     },
+    hasCross && {
+      icon: <LogIn className="h-3 w-3" />,
+      label: t("Users entering cross-site funnels"),
+      value: crossSiteUsers?.toLocaleString() ?? "—",
+      delta: percentDelta(crossSiteUsers, previousCrossSiteUsers),
+    },
     thirdCell,
     {
       icon: <ArrowDownRight className="h-3 w-3" />,
       label: t("Biggest drop-off"),
       value: leak ? formatRate(leak.rate) : "—",
       // The sentence is long for a narrow cell; the hover text keeps it whole.
-      sub: leakText ? <span title={leakText}>{leakText}</span> : hasFigures ? t("No sessions lost between steps") : "",
+      sub: leakText ? (
+        <span title={leakText}>{leakText}</span>
+      ) : hasFigures ? (
+        hasCross ? (
+          t("No drop-off between steps")
+        ) : (
+          t("No sessions lost between steps")
+        )
+      ) : (
+        ""
+      ),
     },
   ];
 

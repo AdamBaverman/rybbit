@@ -66,6 +66,7 @@ export interface GoalTimeSeriesPoint {
  * the window, most conversions first, plus the totals the summary band shows.
  */
 export interface GoalsSummary {
+  cross_site?: { entered: number; converted: number };
   goals: Goal[];
   total_sessions: number;
   /** Sessions that completed at least one goal. */
